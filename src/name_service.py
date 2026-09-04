@@ -62,7 +62,7 @@ class Dispute:
 
 class NameService(gl.Contract):
     records: TreeMap[str, NameRecord]
-    commitments: TreeMap[bytes, Commitment]
+    commitments: TreeMap[str, Commitment]
     disputes: DynArray[Dispute]
 
     # Flattened resolver data: key is f"{name}{SEP}{recordKey}"
@@ -101,15 +101,18 @@ class NameService(gl.Contract):
         return fee if fee is not None else self.default_fee
 
     def _is_active(self, name: str) -> bool:
-        rec = self.records.get(name, None)
-        if rec is None:
-            return False
-        if rec.parent == "":
-            return self._now() <= int(rec.expires_at)
-        parent = self.records.get(rec.parent, None)
-        if parent is None or rec.parent_epoch != parent.epoch:
-            return False
-        return self._is_active(rec.parent)
+        # Iterative parent-chain walk to avoid recursion depth issues.
+        current = name
+        while True:
+            rec = self.records.get(current, None)
+            if rec is None:
+                return False
+            if rec.parent == "":
+                return self._now() <= int(rec.expires_at)
+            parent = self.records.get(rec.parent, None)
+            if parent is None or rec.parent_epoch != parent.epoch:
+                return False
+            current = rec.parent
 
     def _require_active(self, name: str):
         if not self._is_active(name):
@@ -164,10 +167,11 @@ class NameService(gl.Contract):
 
     @gl.public.view
     def reverse_resolve(self, addr: str) -> str:
+        addr_normalized = str(Address(addr))
         name = self.primary_name.get(Address(addr), None)
         if name is None or not self._is_active(name):
             return ""
-        if self.resolve(name) != addr:
+        if self.resolve(name) != addr_normalized:
             return ""
         return name
 
@@ -184,15 +188,15 @@ class NameService(gl.Contract):
         return self.contenthashes.get(name, b"")
 
     @gl.public.view
-    def make_commitment(self, label: str, owner_hex: Address, secret: bytes) -> bytes:
+    def make_commitment(self, label: str, owner_hex: Address, secret: bytes) -> str:
         normalized = label.lower()  # ASCII-only stand-in
         payload = normalized.encode("utf-8") + owner_hex.as_bytes + secret
-        return hashlib.sha256(payload)
+        return hashlib.sha256(payload).hex()
 
     # ---- write methods -------------------------------------------------
 
     @gl.public.write
-    def commit(self, commitment: bytes):
+    def commit(self, commitment: str):
         existing = self.commitments.get(commitment, None)
         now = self._now()
         if existing is not None and (now - int(existing.timestamp)) <= MAX_COMMITMENT_AGE:
@@ -207,10 +211,10 @@ class NameService(gl.Contract):
         if not (MIN_LABEL_LENGTH <= len(normalized.encode("utf-8")) <= MAX_LABEL_LENGTH):
             raise gl.vm.UserError("InvalidLength")
 
-        commitment = self.make_commitment(
+        commitment_key = self.make_commitment(
             normalized, gl.message.sender_address, secret
         )
-        c = self.commitments.get(commitment, None)
+        c = self.commitments.get(commitment_key, None)
         if c is None:
             raise gl.vm.UserError("CommitmentNotFound")
         now = self._now()
@@ -245,9 +249,8 @@ class NameService(gl.Contract):
             parent_epoch=u64(0),
         )
 
-        del self.commitments[commitment]
-        # NOTE: excess-value refund omitted for brevity — see Value Transfers
-        # docs for the emit_transfer() pattern to send change back to sender.
+        del self.commitments[commitment_key]
+        gl.emit("Registered", name=normalized, owner=gl.message.sender_address, expires_at=u64(now + REGISTRATION_PERIOD))
         return normalized
 
     @gl.public.write
@@ -276,6 +279,7 @@ class NameService(gl.Contract):
             epoch=epoch,
             parent_epoch=parent_rec.epoch,
         )
+        gl.emit("SubdomainRegistered", name=name, parent=parent, owner=gl.message.sender_address)
         return name
 
     @gl.public.write.payable
@@ -284,7 +288,9 @@ class NameService(gl.Contract):
         if rec is None or rec.parent != "":
             raise gl.vm.UserError("TokenDoesNotExist")
         fee = self._get_fee(len(rec.label.encode("utf-8")))
-        if int(gl.message.value) < int(fee):
+        premium = self._premium(name)
+        required = int(fee) + int(premium)
+        if int(gl.message.value) < required:
             raise gl.vm.UserError("InsufficientFee")
         rec.expires_at = u64(int(rec.expires_at) + REGISTRATION_PERIOD)
         self.records[name] = rec
@@ -317,9 +323,8 @@ class NameService(gl.Contract):
 
     @gl.public.write
     def set_primary_name(self, name: str):
+        self._require_owner(name)
         self._require_active(name)
-        if self.resolve(name) != str(gl.message.sender_address):
-            raise gl.vm.UserError("Unauthorized")
         self.primary_name[gl.message.sender_address] = name
 
     @gl.public.write
@@ -329,6 +334,7 @@ class NameService(gl.Contract):
         rec = self.records[name]
         rec.owner = Address(to)
         self.records[name] = rec
+        gl.emit("Transfer", name=name, from_=gl.message.sender_address, to=Address(to))
     
     # ---------------------------------------------------------------------------
     # Intelligent extensions
@@ -343,7 +349,7 @@ class NameService(gl.Contract):
     # contract upgrade, because the judgment lives in the prompt/consensus
     # process rather than in frozen bytecode.
 
-    @gl.public.write
+    @gl.public.view
     def check_normalization(self, label: str) -> str:
         def judge():
             prompt = (
@@ -405,7 +411,11 @@ class NameService(gl.Contract):
         evidence_url = dispute.evidence_url
 
         def adjudicate():
-            page = gl.nondet.web.request(evidence_url)
+            page = gl.nondet.web.request(
+                evidence_url,
+                method='GET',
+                body={}
+                )
             prompt = (
                 "You are adjudicating a domain-name dispute, similar to a "
                 "UDRP panel.\n"
@@ -441,6 +451,7 @@ class NameService(gl.Contract):
         dispute.upheld = upheld
         dispute.ruling = ruling
         self.disputes[int(dispute_id)] = dispute
+        gl.emit("DisputeResolved", dispute_id=dispute_id, name=name, upheld=upheld)
 
         if upheld:
             rec = self.records.get(name, None)
