@@ -188,10 +188,13 @@ class NameService(gl.Contract):
         return self.contenthashes.get(name, b"")
 
     @gl.public.view
-    def make_commitment(self, label: str, owner_hex: Address, secret: bytes) -> str:
+    def make_commitment(self, label: str, owner_hex: Address, secret) -> str:
         normalized = label.lower()  # ASCII-only stand-in
-        payload = normalized.encode("utf-8") + owner_hex.as_bytes + secret
-        return hashlib.sha256(payload).hex()
+        addr_bytes = bytes.fromhex(str(owner_hex).removeprefix("0x"))
+        if isinstance(secret, str):
+            secret = bytes.fromhex(secret.removeprefix("0x"))
+        payload = normalized.encode("utf-8") + addr_bytes + secret
+        return hashlib.sha256(payload).digest().hex()
 
     # ---- write methods -------------------------------------------------
 
