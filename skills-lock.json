@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "skills": {
+    "commit": {
+      "source": "genlayerlabs/skills",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/commit/SKILL.md",
+      "computedHash": "ffb4baa2d031c5941a3e1cdf74d275da9c187e21a158a642966de7aeb8c36167"
+    },
+    "create-skill": {
+      "source": "genlayerlabs/skills",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/create-skill/SKILL.md",
+      "computedHash": "67dab18bb115486a637675c6741a5d9052236c99d3ae12126737b1bd53d7f295"
+    },
+    "direct-tests": {
+      "source": "genlayerlabs/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/genlayer-dev/skills/direct-tests/SKILL.md",
+      "computedHash": "f3b1709532d5f9e93d4b3907fdc9936dbb70b2e4cb1935e09f44652ef91b6015"
+    },
+    "docs-refresh": {
+      "source": "genlayerlabs/skills",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/docs-refresh/SKILL.md",
+      "computedHash": "2037141d07cd794ade5be92212a8b0eda1eb9e924e4e958e68840b74aa8ba6ed"
+    },
+    "genlayer-cli": {
+      "source": "genlayerlabs/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/genlayer-dev/skills/genlayer-cli/SKILL.md",
+      "computedHash": "9d5d0414e94549ba589cfa62298fc1ad0c11310725d8f17d410d438a4a7d53bb"
+    },
+    "genlayernode": {
+      "source": "genlayerlabs/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/genlayernode/skills/genlayernode/SKILL.md",
+      "computedHash": "320d9394a98cd479b48869b14568a8b60272cdcbfe616b7bbbbf98c2b2fb1864"
+    },
+    "genvm-lint": {
+      "source": "genlayerlabs/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/genlayer-dev/skills/genvm-lint/SKILL.md",
+      "computedHash": "1524972e899480d53c98969bc24c481cc040cb91574f09a89ad6558bf9704d3f"
+    },
+    "integration-tests": {
+      "source": "genlayerlabs/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/genlayer-dev/skills/integration-tests/SKILL.md",
+      "computedHash": "9e84ff63f412eb2c2284d3fdd337112922e891a12c581251060fe542785016ee"
+    },
+    "linear": {
+      "source": "genlayerlabs/skills",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/linear/SKILL.md",
+      "computedHash": "9520390bcd836d96bb1b2219236dac42f79e884e84561e029e7dfdc8713a9f24"
+    },
+    "pr-create": {
+      "source": "genlayerlabs/skills",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/pr-create/SKILL.md",
+      "computedHash": "f5f560d5dc65ee3a47b917ae8f1ab0bc27218702294a265db9356cdb2309aa35"
+    },
+    "pr-merge": {
+      "source": "genlayerlabs/skills",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/pr-merge/SKILL.md",
+      "computedHash": "785e1fd01817da0756526d47a51f468c3a32ad331c45732785bc79e4074c92c3"
+    },
+    "validator-manage": {
+      "source": "genlayerlabs/skills",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/validator-manage/SKILL.md",
+      "computedHash": "cc8d36ce7414ac603af50c955617c5e56753a499ad445971677090a7c54e7139"
+    },
+    "write-contract": {
+      "source": "genlayerlabs/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/genlayer-dev/skills/write-contract/SKILL.md",
+      "computedHash": "43d310db2960f9e2f298fadd9e8af9db08d99fb1ab82c2a3d4db7cdf9f030b90"
+    }
+  }
+}
