@@ -3,1035 +3,183 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GNS — GenLayer Name Service</title>
-<style>
-  :root {
-    --bg: #0f1117;
-    --surface: #1a1d27;
-    --border: #2a2d3a;
-    --text: #e1e4ed;
-    --muted: #8b8fa3;
-    --accent: #6c5ce7;
-    --accent-hover: #7c6ef7;
-    --success: #00b894;
-    --error: #e17055;
-    --warning: #fdcb6e;
-    --radius: 8px;
-    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    font-family: var(--font);
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    line-height: 1.5;
-  }
-
-  .container { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
-
-  /* Header */
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 0;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 24px;
-  }
-  .header h1 { font-size: 20px; font-weight: 700; }
-  .header h1 span { color: var(--accent); }
-
-  .wallet-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .wallet-info .address {
-    font-size: 13px;
-    color: var(--muted);
-    font-family: monospace;
-  }
-  .wallet-info .network-badge {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 12px;
-    background: var(--accent);
-    color: white;
-    font-weight: 600;
-  }
-
-  /* Buttons */
-  .btn {
-    padding: 8px 16px;
-    border: none;
-    border-radius: var(--radius);
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s, opacity 0.15s;
-    font-family: var(--font);
-  }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .btn-primary { background: var(--accent); color: white; }
-  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-  .btn-sm { padding: 6px 12px; font-size: 13px; }
-  .btn-danger { background: var(--error); color: white; }
-  .btn-success { background: var(--success); color: white; }
-
-  /* Inputs */
-  .input-group { margin-bottom: 12px; }
-  .input-group label {
-    display: block;
-    font-size: 12px;
-    color: var(--muted);
-    margin-bottom: 4px;
-    font-weight: 500;
-  }
-  .input-group input, .input-group textarea {
-    width: 100%;
-    padding: 8px 12px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text);
-    font-size: 14px;
-    font-family: var(--font);
-  }
-  .input-group input:focus, .input-group textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
-  .input-group textarea { resize: vertical; min-height: 60px; }
-  .input-row { display: flex; gap: 8px; align-items: flex-end; }
-  .input-row .input-group { flex: 1; }
-
-  /* Tabs */
-  .tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 20px;
-    overflow-x: auto;
-    padding-bottom: 2px;
-  }
-  .tab {
-    padding: 8px 16px;
-    border: none;
-    background: var(--surface);
-    color: var(--muted);
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-    white-space: nowrap;
-    transition: background 0.15s, color 0.15s;
-    font-family: var(--font);
-  }
-  .tab.active { background: var(--accent); color: white; }
-  .tab:hover:not(.active) { background: var(--border); color: var(--text); }
-
-  /* Panels */
-  .panel { display: none; }
-  .panel.active { display: block; }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 20px;
-    margin-bottom: 16px;
-  }
-  .card h3 {
-    font-size: 15px;
-    font-weight: 600;
-    margin-bottom: 12px;
-    color: var(--text);
-  }
-  .card p { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
-
-  /* Timer */
-  .timer {
-    font-size: 13px;
-    color: var(--warning);
-    margin: 8px 0;
-    font-weight: 500;
-  }
-  .timer.ready { color: var(--success); }
-
-  /* Log */
-  .log-area {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px;
-    max-height: 240px;
-    overflow-y: auto;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 12px;
-    line-height: 1.6;
-    margin-top: 16px;
-  }
-  .log-entry { margin-bottom: 4px; }
-  .log-entry.info { color: var(--muted); }
-  .log-entry.success { color: var(--success); }
-  .log-entry.error { color: var(--error); }
-  .log-entry.warn { color: var(--warning); }
-
-  .status-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 16px;
-    font-size: 13px;
-    color: var(--muted);
-  }
-  .status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--error);
-  }
-  .status-dot.connected { background: var(--success); }
-
-  .spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-    vertical-align: middle;
-    margin-right: 6px;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  .hidden { display: none !important; }
-
-  .result-box {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px;
-    margin-top: 12px;
-    font-size: 13px;
-    word-break: break-all;
-  }
-  .result-box .label { color: var(--muted); font-size: 11px; text-transform: uppercase; margin-bottom: 4px; }
-  .result-box .value { font-family: monospace; }
-
-  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  @media (max-width: 500px) { .two-col { grid-template-columns: 1fr; } }
-</style>
+<title>GenNS — claim your name onchain</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><text y=%2224%22 font-size=%2226%22>🔥</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-<div class="container">
-  <!-- Header -->
-  <div class="header">
-    <h1><span>GNS</span> Name Service</h1>
-    <div class="wallet-info">
-      <span class="network-badge" id="networkBadge">studionet</span>
-      <span class="address" id="walletAddress">Not connected</span>
-      <button class="btn btn-primary btn-sm" id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
+<div class="ember-field" aria-hidden="true"></div>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="#/" class="brand" data-nav>
+      <span class="brand-mark">🔥</span>
+      <span class="brand-name">GenNS</span>
+    </a>
+    <nav class="main-nav" id="mainNav">
+      <a href="#/" data-nav>Search</a>
+      <a href="#/names" data-nav>My names</a>
+      <a href="#/learn" data-nav>How it works</a>
+    </nav>
+    <div class="header-actions">
+      <button class="btn btn-ghost" id="navMenuToggle" aria-label="Toggle menu" aria-expanded="false">
+        <span class="burger"></span>
+      </button>
+      <button class="btn btn-wallet" id="walletBtn"></button>
     </div>
   </div>
+</header>
 
-  <!-- Status -->
-  <div class="status-bar">
-    <div class="status-dot" id="statusDot"></div>
-    <span id="statusText">Disconnected</span>
-    <span style="margin-left: auto; font-size: 12px;">Contract:</span>
-    <input type="text" id="contractAddr" placeholder="0x..."
-      style="width: 200px; padding: 4px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; font-family: monospace;">
-  </div>
+<main id="app" role="main"></main>
 
-  <!-- Tabs -->
-  <div class="tabs">
-    <button class="tab active" onclick="switchTab('register')">① Register</button>
-    <button class="tab" onclick="switchTab('manage')">② Manage</button>
-    <button class="tab" onclick="switchTab('subdomain')">③ Subdomains</button>
-    <button class="tab" onclick="switchTab('resolve')">④ Resolve</button>
-    <button class="tab" onclick="switchTab('disputes')">⑤ Disputes</button>
-  </div>
-
-  <!-- Panel: Register -->
-  <div class="panel active" id="panel-register">
-    <div class="card">
-      <h3>Register a Name</h3>
-      <p>Two-step commit-reveal process. Commit first, wait 60s, then reveal with your fee.</p>
-
-      <div class="two-col">
-        <div class="input-group">
-          <label>Label</label>
-          <input type="text" id="regLabel" placeholder="alice">
-        </div>
-        <div class="input-group">
-          <label>Fee (GEN, optional)</label>
-          <input type="text" id="regFee" placeholder="0.0005">
-        </div>
-      </div>
-
-      <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 12px;">
-        <button class="btn btn-primary" id="commitBtn" onclick="doCommit()">① Commit</button>
-        <button class="btn btn-success" id="revealBtn" onclick="doReveal()" disabled>② Reveal & Register</button>
-      </div>
-
-      <div class="timer hidden" id="commitTimer">Waiting… 60s remaining</div>
-
-      <div class="result-box hidden" id="regResult">
-        <div class="label">Result</div>
-        <div class="value" id="regResultValue"></div>
-      </div>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <span class="brand-mark">🔥</span>
+      <span class="brand-name">GenNS</span>
+      <p>Onchain names for wallets, sites, and everything you build.</p>
     </div>
-
-    <div class="card">
-      <h3>Check Availability</h3>
-      <div class="input-row">
-        <div class="input-group">
-          <label>Name</label>
-          <input type="text" id="availName" placeholder="alice">
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="checkAvailability()" style="margin-bottom: 12px;">Check</button>
+    <div class="footer-links">
+      <div class="footer-col">
+        <h4>Product</h4>
+        <a href="#/" data-nav>Search names</a>
+        <a href="#/names" data-nav>Dashboard</a>
+        <a href="#/learn" data-nav>How it works</a>
       </div>
-      <div class="result-box hidden" id="availResult">
-        <div class="label">Status</div>
-        <div class="value" id="availResultValue"></div>
+      <div class="footer-col">
+        <h4>Resources</h4>
+        <a href="#/learn" data-nav>Documentation</a>
+        <a href="#/learn" data-nav>Pricing</a>
+        <a href="#/learn" data-nav>FAQ</a>
+      </div>
+      <div class="footer-col">
+        <h4>Community</h4>
+        <a href="#" onclick="return false">X / Twitter</a>
+        <a href="#" onclick="return false">Discord</a>
+        <a href="#" onclick="return false">Github</a>
       </div>
     </div>
   </div>
+</footer>
 
-  <!-- Panel: Manage -->
-  <div class="panel" id="panel-manage">
-    <div class="card">
-      <h3>Set Resolved Address</h3>
-      <div class="input-group">
-        <label>Name</label>
-        <input type="text" id="setName" placeholder="alice">
-      </div>
-      <div class="input-group">
-        <label>Target Address</label>
-        <input type="text" id="setAddr" placeholder="0x...">
-      </div>
-      <button class="btn btn-primary" onclick="doSetAddr()">Set Address</button>
-    </div>
+<div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
-    <div class="card">
-      <h3>Set Text Record</h3>
-      <div class="two-col">
-        <div class="input-group">
-          <label>Name</label>
-          <input type="text" id="textName" placeholder="alice">
-        </div>
-        <div class="input-group">
-          <label>Key</label>
-          <input type="text" id="textKey" placeholder="avatar">
-        </div>
-      </div>
-      <div class="input-group">
-        <label>Value</label>
-        <input type="text" id="textValue" placeholder="ipfs://Qm...">
-      </div>
-      <button class="btn btn-primary" onclick="doSetText()">Set Text</button>
-    </div>
+<!-- ============ TEMPLATES ============ -->
 
-    <div class="card">
-      <h3>Set Primary Name</h3>
-      <div class="input-group">
-        <label>Name</label>
-        <input type="text" id="primaryName" placeholder="alice">
-      </div>
-      <button class="btn btn-primary" onclick="doSetPrimary()">Set Primary</button>
-    </div>
-
-    <div class="card">
-      <h3>Transfer Name</h3>
-      <div class="two-col">
-        <div class="input-group">
-          <label>Name</label>
-          <input type="text" id="transferName" placeholder="alice">
+<template id="tpl-home">
+  <section class="hero">
+    <div class="hero-inner">
+      <h1 class="hero-title">A name for everything<br>you own onchain.</h1>
+      <p class="hero-sub">Search, claim, and manage a human-readable identity — one name for your wallet, your site, and every app you connect.</p>
+      <form class="search-form" id="searchForm" autocomplete="off">
+        <div class="search-box">
+          <svg class="search-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M14 14L18 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <input type="text" id="searchInput" placeholder="Search for a name" spellcheck="false">
+          <span class="search-suffix">.gen</span>
         </div>
-        <div class="input-group">
-          <label>New Owner</label>
-          <input type="text" id="transferTo" placeholder="0x...">
-        </div>
-      </div>
-      <button class="btn btn-primary" onclick="doTransfer()">Transfer</button>
-    </div>
-
-    <div class="card">
-      <h3>Renew Name</h3>
-      <div class="input-row">
-        <div class="input-group">
-          <label>Name</label>
-          <input type="text" id="renewName" placeholder="alice">
-        </div>
-        <div class="input-group">
-          <label>Fee (GEN)</label>
-          <input type="text" id="renewFee" placeholder="0.0005">
-        </div>
-      </div>
-      <button class="btn btn-primary" onclick="doRenew()">Renew</button>
-    </div>
-  </div>
-
-  <!-- Panel: Subdomains -->
-  <div class="panel" id="panel-subdomain">
-    <div class="card">
-      <h3>Register Subdomain</h3>
-      <p>Creates a subdomain under a name you own. e.g. "blog" under "alice" → "blog.alice"</p>
-      <div class="two-col">
-        <div class="input-group">
-          <label>Subdomain Label</label>
-          <input type="text" id="subLabel" placeholder="blog">
-        </div>
-        <div class="input-group">
-          <label>Parent Name</label>
-          <input type="text" id="subParent" placeholder="alice">
-        </div>
-      </div>
-      <button class="btn btn-primary" onclick="doRegisterSubdomain()">Register Subdomain</button>
-    </div>
-  </div>
-
-  <!-- Panel: Resolve -->
-  <div class="panel" id="panel-resolve">
-    <div class="card">
-      <h3>Resolve Name</h3>
-      <div class="input-row">
-        <div class="input-group">
-          <label>Full Name</label>
-          <input type="text" id="resolveName" placeholder="alice">
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="doResolve()" style="margin-bottom: 12px;">Resolve</button>
-      </div>
-      <div class="result-box hidden" id="resolveResult">
-        <div class="label">Resolved Address</div>
-        <div class="value" id="resolveResultValue"></div>
+        <div class="search-live" id="searchLive"></div>
+      </form>
+      <div class="hero-trending">
+        <span class="trending-label">Trending</span>
+        <div class="trending-list" id="trendingList"></div>
       </div>
     </div>
+  </section>
 
-    <div class="card">
-      <h3>Reverse Resolve</h3>
-      <div class="input-row">
-        <div class="input-group">
-          <label>Address</label>
-          <input type="text" id="rresolveAddr" placeholder="0x...">
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="doReverseResolve()" style="margin-bottom: 12px;">Lookup</button>
-      </div>
-      <div class="result-box hidden" id="rresolveResult">
-        <div class="label">Primary Name</div>
-        <div class="value" id="rresolveResultValue"></div>
-      </div>
+  <section class="strip">
+    <div class="strip-inner">
+      <div class="stat"><span class="stat-num">2,481,902</span><span class="stat-label">Names registered</span></div>
+      <div class="stat"><span class="stat-num" id="statDefaultFee">—</span><span class="stat-label">Starting price / year</span></div>
     </div>
+  </section>
+</template>
 
-    <div class="card">
-      <h3>Get Text Record</h3>
-      <div class="two-col">
-        <div class="input-group">
-          <label>Name</label>
-          <input type="text" id="getTextName" placeholder="alice">
+<template id="tpl-search">
+  <section class="page-search">
+    <div class="page-inner">
+      <form class="search-form search-form--compact" id="searchFormPage" autocomplete="off">
+        <div class="search-box">
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M14 14L18 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <input type="text" id="searchInputPage" placeholder="Search for a name" spellcheck="false">
+          <span class="search-suffix">.gen</span>
         </div>
-        <div class="input-group">
-          <label>Key</label>
-          <input type="text" id="getTextKey" placeholder="avatar">
+      </form>
+      <div class="results-head">
+        <h2 id="resultsTitle">Results</h2>
+        <div class="filter-row" id="filterRow">
+          <button class="chip is-active" data-filter="all">All</button>
+          <button class="chip" data-filter="available">Available</button>
+          <button class="chip" data-filter="taken">Taken</button>
         </div>
       </div>
-      <button class="btn btn-primary" onclick="doGetText()">Get Text</button>
-      <div class="result-box hidden" id="getTextResult">
-        <div class="label">Value</div>
-        <div class="value" id="getTextResultValue"></div>
-      </div>
+      <div class="results-list" id="resultsList"></div>
     </div>
-  </div>
+  </section>
+</template>
 
-  <!-- Panel: Disputes -->
-  <div class="panel" id="panel-disputes">
-    <div class="card">
-      <h3>File Dispute</h3>
-      <p>Report a name for bad-faith registration or impersonation.</p>
-      <div class="input-group">
-        <label>Disputed Name</label>
-        <input type="text" id="dispName" placeholder="coinbase">
-      </div>
-      <div class="input-group">
-        <label>Reason</label>
-        <input type="text" id="dispReason" placeholder="Phishing impersonation">
-      </div>
-      <div class="input-group">
-        <label>Evidence URL</label>
-        <input type="text" id="dispEvidence" placeholder="https://...">
-      </div>
-      <button class="btn btn-primary" onclick="doFileDispute()">File Dispute</button>
+<template id="tpl-name">
+  <section class="page-name">
+    <div class="page-inner page-inner--narrow">
+      <a href="#/" class="back-link" data-nav>&larr; Back to search</a>
+      <div class="name-card" id="nameCard"></div>
     </div>
+  </section>
+</template>
 
-    <div class="card">
-      <h3>Resolve Dispute</h3>
-      <div class="input-row">
-        <div class="input-group">
-          <label>Dispute ID</label>
-          <input type="number" id="dispResolveId" placeholder="0">
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="doResolveDispute()" style="margin-bottom: 12px;">Resolve</button>
-      </div>
+<template id="tpl-register">
+  <section class="page-register">
+    <div class="page-inner page-inner--narrow">
+      <div class="stepper" id="stepper"></div>
+      <div class="register-panel" id="registerPanel"></div>
     </div>
+  </section>
+</template>
 
-    <div class="card">
-      <h3>Get Dispute</h3>
-      <div class="input-row">
-        <div class="input-group">
-          <label>Dispute ID</label>
-          <input type="number" id="dispGetId" placeholder="0">
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="doGetDispute()" style="margin-bottom: 12px;">Get</button>
+<template id="tpl-names">
+  <section class="page-names">
+    <div class="page-inner">
+      <div class="page-head">
+        <h1>My names</h1>
+        <a href="#/" class="btn btn-primary" data-nav>Search names</a>
       </div>
-      <div class="result-box hidden" id="dispGetResult">
-        <div class="label">Dispute</div>
-        <div class="value" id="dispGetResultValue"></div>
-      </div>
+      <div id="namesBody"></div>
     </div>
-  </div>
+  </section>
+</template>
 
-  <!-- Log -->
-  <div class="log-area" id="logArea">
-    <div class="log-entry info">Ready. Connect your wallet and enter the contract address to begin.</div>
-  </div>
+<template id="tpl-profile">
+  <section class="page-profile">
+    <div class="page-inner page-inner--narrow" id="profileBody"></div>
+  </section>
+</template>
+
+<template id="tpl-settings">
+  <section class="page-settings">
+    <div class="page-inner page-inner--narrow">
+      <a href="#/names" class="back-link" data-nav>&larr; Back to my names</a>
+      <div id="settingsBody"></div>
+    </div>
+  </section>
+</template>
+
+<template id="tpl-learn">
+  <section class="page-learn">
+    <div class="page-inner page-inner--narrow">
+      <h1>How GenNS works</h1>
+      <div class="faq" id="faqList"></div>
+    </div>
+  </section>
+</template>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
 </div>
 
-<script type="module">
-// ==========================================================================
-// GenLayerJS SDK import
-// ==========================================================================
-import { createClient } from 'https://esm.sh/genlayer-js@latest';
-import { studionet } from 'https://esm.sh/genlayer-js@latest/chains';
-import { TransactionStatus } from 'https://esm.sh/genlayer-js@latest/types';
-
-// ==========================================================================
-// State
-// ==========================================================================
-let client = null;
-let readClient = null;
-let currentAddress = '';
-let commitState = { secret: null, key: null, timer: null, ready: false };
-
-// ==========================================================================
-// Logging
-// ==========================================================================
-function log(msg, type = 'info') {
-  const area = document.getElementById('logArea');
-  const entry = document.createElement('div');
-  entry.className = `log-entry ${type}`;
-  const ts = new Date().toLocaleTimeString();
-  entry.textContent = `[${ts}] ${msg}`;
-  area.appendChild(entry);
-  area.scrollTop = area.scrollHeight;
-}
-
-function setStatus(connected) {
-  document.getElementById('statusDot').className = `status-dot${connected ? ' connected' : ''}`;
-  document.getElementById('statusText').textContent = connected ? 'Connected' : 'Disconnected';
-}
-
-// ==========================================================================
-// Wallet connection
-// ==========================================================================
-window.connectWallet = async function() {
-  try {
-    if (!window.ethereum) {
-      log('No wallet detected. Install MetaMask.', 'error');
-      return;
-    }
-
-    log('Connecting wallet…');
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    currentAddress = accounts[0];
-
-    document.getElementById('walletAddress').textContent =
-      currentAddress.slice(0, 6) + '…' + currentAddress.slice(-4);
-
-    // Build clients
-    readClient = createClient({ chain: studionet });
-
-    client = createClient({
-      chain: studionet,
-      account: currentAddress,
-      provider: window.ethereum,
-    });
-
-    // Switch MetaMask to studionet before any writes
-    try {
-      await client.connect('studionet');
-      log('Wallet switched to studionet', 'success');
-    } catch (e) {
-      log(`Chain switch: ${e.message}`, 'warn');
-    }
-
-    setStatus(true);
-    log(`Connected: ${currentAddress}`, 'success');
-  } catch (err) {
-    log(`Connection failed: ${err.message}`, 'error');
-  }
-};
-
-// ==========================================================================
-// Tab switching
-// ==========================================================================
-window.switchTab = function(name) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.getElementById(`panel-${name}`).classList.add('active');
-  // Find and activate the matching tab button
-  document.querySelectorAll('.tab').forEach(t => {
-    if (t.textContent.toLowerCase().includes(name.substring(0, 4))) t.classList.add('active');
-  });
-};
-
-// ==========================================================================
-// Helpers
-// ==========================================================================
-function getAddr() {
-  const v = document.getElementById('contractAddr').value.trim();
-  if (!v) { log('Enter the contract address first.', 'error'); return null; }
-  return v;
-}
-
-function toWei(genStr) {
-  if (!genStr || genStr === '0') return 0n;
-  return BigInt(Math.round(parseFloat(genStr) * 1e18));
-}
-
-function showResult(id, value) {
-  const box = document.getElementById(id);
-  box.classList.remove('hidden');
-  document.getElementById(id + 'Value').textContent = value;
-}
-
-async function waitForTx(hash, label) {
-  log(`Tx submitted: ${hash}`, 'info');
-  log(`Waiting for finalization…`);
-  const receipt = await client.waitForTransactionReceipt({
-    hash,
-    status: TransactionStatus.FINALIZED,
-    fullTransaction: false,
-  });
-  if (receipt.txExecutionResultName === 'FINISHED_WITH_RETURN') {
-    log(`${label} ✓ Finalized`, 'success');
-  } else if (receipt.txExecutionResultName === 'FINISHED_WITH_ERROR') {
-    log(`${label} ✗ Execution failed`, 'error');
-  } else {
-    log(`${label} — Result: ${receipt.txExecutionResultName}`, 'warn');
-  }
-  return receipt;
-}
-
-// ==========================================================================
-// 1. REGISTER — Commit / Reveal
-// ==========================================================================
-window.doCommit = async function() {
-  const addr = getAddr();
-  if (!addr || !client) return;
-
-  const label = document.getElementById('regLabel').value.trim();
-  if (!label) { log('Enter a label.', 'error'); return; }
-
-  try {
-    // Generate random 32-byte secret
-    const secretBytes = crypto.getRandomValues(new Uint8Array(32));
-    const secret = '0x' + Array.from(secretBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-
-    // Compute commitment hash (mirrors make_commitment)
-    const normalized = label.toLowerCase();
-    const labelBytes = new TextEncoder().encode(normalized);
-    const senderBytes = hexToBytes(currentAddress);
-    const secretBytesArr = hexToBytes(secret);
-
-    const payload = new Uint8Array(labelBytes.length + senderBytes.length + secretBytesArr.length);
-    payload.set(labelBytes, 0);
-    payload.set(senderBytes, labelBytes.length);
-    payload.set(secretBytesArr, labelBytes.length + senderBytes.length);
-
-    const hashBuffer = await crypto.subtle.digest('SHA-256', payload);
-    const commitment = '0x' + Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-    commitState.secret = secret;
-    commitState.key = commitment;
-
-    log(`Frontend commitment: ${commitment}`);
-    log(`  label=${normalized}, sender=${currentAddress}`);
-    log(`Committing: ${commitment.slice(0, 18)}…`);
-    const hash = await client.writeContract({
-      address: addr,
-      functionName: 'commit',
-      args: [commitment],
-    });
-
-    await waitForTx(hash, 'Commit');
-    log('Secret saved. Wait 60s then click Reveal.', 'success');
-
-    // Start countdown
-    startCommitTimer();
-  } catch (err) {
-    log(`Commit failed: ${err.message}`, 'error');
-  }
-};
-
-window.doReveal = async function() {
-  const addr = getAddr();
-  if (!addr || !client) return;
-
-  const label = document.getElementById('regLabel').value.trim();
-  if (!label) { log('Enter a label.', 'error'); return; }
-  if (!commitState.secret) { log('No commitment found. Commit first.', 'error'); return; }
-
-  try {
-    const feeStr = document.getElementById('regFee').value.trim();
-    const value = toWei(feeStr || '0.0005');
-
-    log(`Revealing "${label}" with fee ${value / 10n**18n} GEN…`);
-    const hash = await client.writeContract({
-      address: addr,
-      functionName: 'reveal',
-      args: [label, commitState.secret],
-      value: value,
-    });
-
-    const receipt = await waitForTx(hash, 'Reveal & Register');
-    showResult('regResult', `Name "${label}" registered!`);
-    commitState = { secret: null, key: null, timer: null, ready: false };
-    document.getElementById('commitTimer').classList.add('hidden');
-  } catch (err) {
-    log(`Reveal failed: ${err.message}`, 'error');
-  }
-};
-
-function startCommitTimer() {
-  const timerEl = document.getElementById('commitTimer');
-  const revealBtn = document.getElementById('revealBtn');
-  timerEl.classList.remove('hidden');
-  revealBtn.disabled = true;
-
-  let remaining = 60;
-  timerEl.textContent = `Waiting… ${remaining}s remaining`;
-  timerEl.classList.remove('ready');
-
-  if (commitState.timer) clearInterval(commitState.timer);
-  commitState.timer = setInterval(() => {
-    remaining--;
-    if (remaining <= 0) {
-      clearInterval(commitState.timer);
-      timerEl.textContent = '✓ Ready to reveal';
-      timerEl.classList.add('ready');
-      revealBtn.disabled = false;
-      commitState.ready = true;
-    } else {
-      timerEl.textContent = `Waiting… ${remaining}s remaining`;
-    }
-  }, 1000);
-}
-
-function hexToBytes(hex) {
-  const clean = hex.startsWith('0x') ? hex.slice(2) : hex;
-  const bytes = new Uint8Array(clean.length / 2);
-  for (let i = 0; i < clean.length; i += 2) {
-    bytes[i / 2] = parseInt(clean.substr(i, 2), 16);
-  }
-  return bytes;
-}
-
-// ==========================================================================
-// Check Availability
-// ==========================================================================
-window.checkAvailability = async function() {
-  const addr = getAddr();
-  if (!addr || !readClient) return;
-
-  const name = document.getElementById('availName').value.trim();
-  if (!name) { log('Enter a name.', 'error'); return; }
-
-  try {
-    const result = await readClient.readContract({
-      address: addr,
-      functionName: 'is_available',
-      args: [name, ''],
-    });
-    showResult('availResult', result ? '✓ Available' : '✗ Taken');
-    log(`is_available("${name}") = ${result}`);
-  } catch (err) {
-    log(`Check failed: ${err.message}`, 'error');
-  }
-};
-
-// ==========================================================================
-// 2. MANAGE — Set records
-// ==========================================================================
-window.doSetAddr = async function() {
-  const addr = getAddr();
-  if (!addr || !client) return;
-
-  const name = document.getElementById('setName').value.trim();
-  const target = document.getElementById('setAddr').value.trim();
-  if (!name || !target) { log('Fill in both fields.', 'error'); return; }
-
-  try {
-    log(`Setting addr for "${name}" → ${target}`);
-    const hash = await client.writeContract({
-      address: addr,
-      functionName: 'set_addr',
-      args: [name, target],
-    });
-    await waitForTx(hash, 'set_addr');
-  } catch (err) {
-    log(`set_addr failed: ${err.message}`, 'error');
-  }
-};
-
-window.doSetText = async function() {
-  const addr = getAddr();
-  if (!addr || !client) return;
-
-  const name = document.getElementById('textName').value.trim();
-  const key = document.getElementById('textKey').value.trim();
-  const value = document.getElementById('textValue').value.trim();
-  if (!name || !key) { log('Name and key required.', 'error'); return; }
-
-  try {
-    log(`Setting text "${key}" for "${name}"`);
-    const hash = await client.writeContract({
-      address: addr,
-      functionName: 'set_text',
-      args: [name, key, value],
-    });
-    await waitForTx(hash, 'set_text');
-  } catch (err) {
-    log(`set_text failed: ${err.message}`, 'error');
-  }
-};
-
-window.doSetPrimary = async function() {
-  const addr = getAddr();
-  if (!addr || !client) return;
-
-  const name = document.getElementById('primaryName').value.trim();
-  if (!name) { log('Enter a name.', 'error'); return; }
-
-  try {
-    log(`Setting primary name: "${name}"`);
-    const hash = await client.writeContract({
-      address: addr,
-      functionName: 'set_primary_name',
-      args: [name],
-    });
-    await waitForTx(hash, 'set_primary_name');
-  } catch (err) {
-    log(`set_primary_name failed: ${err.message}`, 'error');
-  }
-};
-
-window.doTransfer = async function() {
-  const addr = getAddr();
-  if (!addr || !client) return;
-
-  const name = document.getElementById('transferName').value.trim();
-  const to = document.getElementById('transferTo').value.trim();
-  if (!name || !to) { log('Fill in both fields.', 'error'); return; }
-
-  try {
-    log(`Transferring "${name}" → ${to}`);
-    const hash = await client.writeContract({
-      address: addr,
-      functionName: 'transfer',
-      args: [name, to],
-    });
-    await waitForTx(hash, 'transfer');
-  } catch (err) {
-    log(`transfer failed: ${err.message}`, 'error');
-  }
-};
-
-window.doRenew = async function() {
-  const addr = getAddr();
-  if (!addr || !client) return;
-
-  const name = document.getElementById('renewName').value.trim();
-  if (!name) { log('Enter a name.', 'error'); return; }
-
-  try {
-    const feeStr = document.getElementById('renewFee').value.trim();
-    const value = toWei(feeStr || '0.0005');
-    log(`Renewing "${name}" with fee ${value / 10n**18n} GEN`);
-    const hash = await client.writeContract({
-      address: addr,
-      functionName: 'renew',
-      args: [name],
-      value: value,
-    });
-    await waitForTx(hash, 'renew');
-  } catch (err) {
-    log(`renew failed: ${err.message}`, 'error');
-  }
-};
-
-// ==========================================================================
-// 3. SUBDOMAINS
-// ==========================================================================
-window.doRegisterSubdomain = async function() {
-  const addr = getAddr();
-  if (!addr || !client) return;
-
-  const label = document.getElementById('subLabel').value.trim();
-  const parent = document.getElementById('subParent').value.trim();
-  if (!label || !parent) { log('Fill in both fields.', 'error'); return; }
-
-  try {
-    log(`Registering subdomain: ${label}.${parent}`);
-    const hash = await client.writeContract({
-      address: addr,
-      functionName: 'register_subdomain',
-      args: [label, parent],
-    });
-    const receipt = await waitForTx(hash, 'register_subdomain');
-    log(`Subdomain registered: ${label}.${parent}`, 'success');
-  } catch (err) {
-    log(`register_subdomain failed: ${err.message}`, 'error');
-  }
-};
-
-// ==========================================================================
-// 4. RESOLVE
-// ==========================================================================
-window.doResolve = async function() {
-  const addr = getAddr();
-  if (!addr || !readClient) return;
-
-  const name = document.getElementById('resolveName').value.trim();
-  if (!name) { log('Enter a name.', 'error'); return; }
-
-  try {
-    const result = await readClient.readContract({
-      address: addr,
-      functionName: 'resolve',
-      args: [name],
-    });
-    showResult('resolveResult', result);
-    log(`resolve("${name}") = ${result}`);
-  } catch (err) {
-    log(`resolve failed: ${err.message}`, 'error');
-  }
-};
-
-window.doReverseResolve = async function() {
-  const addr = getAddr();
-  if (!addr || !readClient) return;
-
-  const raddr = document.getElementById('rresolveAddr').value.trim();
-  if (!raddr) { log('Enter an address.', 'error'); return; }
-
-  try {
-    const result = await readClient.readContract({
-      address: addr,
-      functionName: 'reverse_resolve',
-      args: [raddr],
-    });
-    showResult('rresolveResult', result || '(none)');
-    log(`reverse_resolve(${raddr.slice(0, 10)}…) = ${result || '(none)'}`);
-  } catch (err) {
-    log(`reverse_resolve failed: ${err.message}`, 'error');
-  }
-};
-
-window.doGetText = async function() {
-  const addr = getAddr();
-  if (!addr || !readClient) return;
-
-  const name = document.getElementById('getTextName').value.trim();
-  const key = document.getElementById('getTextKey').value.trim();
-  if (!name || !key) { log('Fill in both fields.', 'error'); return; }
-
-  try {
-    const result = await readClient.readContract({
-      address: addr,
-      functionName: 'get_text',
-      args: [name, key],
-    });
-    showResult('getTextResult', result || '(empty)');
-    log(`get_text("${name}", "${key}") = ${result || '(empty)'}`);
-  } catch (err) {
-    log(`get_text failed: ${err.message}`, 'error');
-  }
-};
-
-// ==========================================================================
-// 5. DISPUTES
-// ==========================================================================
-window.doFileDispute = async function() {
-  const addr = getAddr();
-  if (!addr || !client) return;
-
-  const name = document.getElementById('dispName').value.trim();
-  const reason = document.getElementById('dispReason').value.trim();
-  const evidence = document.getElementById('dispEvidence').value.trim();
-  if (!name || !reason || !evidence) { log('All fields required.', 'error'); return; }
-
-  try {
-    log(`Filing dispute against "${name}"…`);
-    const hash = await client.writeContract({
-      address: addr,
-      functionName: 'file_dispute',
-      args: [name, reason, evidence],
-    });
-    const receipt = await waitForTx(hash, 'file_dispute');
-    log('Dispute filed. Use resolve_dispute to adjudicate.', 'success');
-  } catch (err) {
-    log(`file_dispute failed: ${err.message}`, 'error');
-  }
-};
-
-window.doResolveDispute = async function() {
-  const addr = getAddr();
-  if (!addr || !client) return;
-
-  const id = document.getElementById('dispResolveId').value.trim();
-  if (id === '') { log('Enter a dispute ID.', 'error'); return; }
-
-  try {
-    log(`Resolving dispute #${id}…`);
-    const hash = await client.writeContract({
-      address: addr,
-      functionName: 'resolve_dispute',
-      args: [parseInt(id)],
-    });
-    await waitForTx(hash, 'resolve_dispute');
-  } catch (err) {
-    log(`resolve_dispute failed: ${err.message}`, 'error');
-  }
-};
-
-window.doGetDispute = async function() {
-  const addr = getAddr();
-  if (!addr || !readClient) return;
-
-  const id = document.getElementById('dispGetId').value.trim();
-  if (id === '') { log('Enter a dispute ID.', 'error'); return; }
-
-  try {
-    const result = await readClient.readContract({
-      address: addr,
-      functionName: 'get_dispute',
-      args: [parseInt(id)],
-    });
-    const pretty = JSON.stringify(result, null, 2);
-    showResult('dispGetResult', pretty);
-    log(`Dispute #${id}:`, 'info');
-    log(pretty);
-  } catch (err) {
-    log(`get_dispute failed: ${err.message}`, 'error');
-  }
-};
-
-</script>
-
+<script type="module" src="mock-data.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>
