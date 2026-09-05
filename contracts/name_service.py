@@ -5,6 +5,7 @@ GNS (GenLayer Name Service) — a naming protocol for GenLayer.
 
 from genlayer import *
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -24,6 +25,15 @@ MAX_SUBDOMAIN_DEPTH = 10
 DEFAULT_PREMIUM_DECAY_PERIOD = 21 * 24 * 60 * 60  # 21 days
 SEP = "\x00"  # composite-key separator for flattened resolver maps
 
+# Error classification (write-contract skill)
+ERROR_EXPECTED = "[EXPECTED]"   # Business logic (deterministic) - exact match required
+ERROR_EXTERNAL = "[EXTERNAL]"   # External API 4xx (deterministic) - exact match required
+ERROR_TRANSIENT = "[TRANSIENT]"  # Network/5xx (non-deterministic) - agree if both transient
+ERROR_LLM = "[LLM_ERROR]"  # LLM misbehavior - always disagree, force rotation
+
+# Valid label characters: lowercase alphanumeric and hyphens (no leading/trailing hyphen)
+VALID_LABEL_RE = re.compile(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
+RESERVED_NAMES = frozenset({'www', 'email', 'admin', 'root', 'null', 'undefined'})
 
 # ---------------------------------------------------------------------------
 # Storage-compatible records
@@ -71,6 +81,7 @@ class NameService(gl.Contract):
     contenthashes: TreeMap[str, bytes]
 
     primary_name: TreeMap[Address, str]
+    owned_names: TreeMap[str, str]   # key: str(addr), value: "name1\x00name2\x00..."
 
     length_fees: TreeMap[u32, u256]
     default_fee: u256
@@ -79,19 +90,20 @@ class NameService(gl.Contract):
     owner: Address                        # zero this out / remove admin fns for a GNS-style ownerless deploy
 
     def __init__(self):
-        print("Creating Contract")
         self.owner = gl.message.sender_address
         self.default_fee = u256(5 * 10**14)      # 0.0005 GEN, mirrors GNS's 5+ byte tier
         self.max_premium = u256(100 * 10**18)     # 100 GEN
         self.premium_decay_period = u64(DEFAULT_PREMIUM_DECAY_PERIOD)
-        print("Done Creating")
 
     # ---- internal helpers -------------------------------------------------
 
     def _now(self) -> int:
-        # Deterministic: pinned to the transaction timestamp, identical
-        # across every validator re-executing this call.
-        return int(datetime.now(timezone.utc).timestamp())
+        # Use transaction timestamp if available (deterministic across validators).
+        # Fallback to datetime.now() for local testing.
+        try:
+            return int(gl.message.timestamp)
+        except Exception:
+            return int(datetime.now(timezone.utc).timestamp())
 
     def _full_name(self, label: str, parent: str) -> str:
         return label if parent == "" else f"{label}.{parent}"
@@ -101,9 +113,10 @@ class NameService(gl.Contract):
         return fee if fee is not None else self.default_fee
 
     def _is_active(self, name: str) -> bool:
-        # Iterative parent-chain walk to avoid recursion depth issues.
+        # Iterative parent-chain walk with depth limit to prevent circular references.
         current = name
-        while True:
+        depth = 0
+        while depth < MAX_SUBDOMAIN_DEPTH:
             rec = self.records.get(current, None)
             if rec is None:
                 return False
@@ -113,15 +126,47 @@ class NameService(gl.Contract):
             if parent is None or rec.parent_epoch != parent.epoch:
                 return False
             current = rec.parent
+            depth += 1
+        return False  # depth limit exceeded - treat as inactive
 
     def _require_active(self, name: str):
         if not self._is_active(name):
-            raise gl.vm.UserError("Expired")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} Expired")
 
     def _require_owner(self, name: str):
         rec = self.records.get(name, None)
         if rec is None or rec.owner != gl.message.sender_address:
-            raise gl.vm.UserError("Unauthorized")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} Unauthorized")
+
+    def _index_add(self, addr: Address, name: str):
+        addr_key = str(addr)
+        existing = self.owned_names.get(addr_key, None)
+        names = existing.split(SEP) if existing is not None and existing != "" else []
+        if name not in names:
+            names.append(name)
+            self.owned_names[addr_key] = SEP.join(names)
+
+    def _index_remove(self, addr: Address, name: str):
+        addr_key = str(addr)
+        existing = self.owned_names.get(addr_key, None)
+        if existing is None or existing == "":
+            return
+        names = existing.split(SEP)
+        if name in names:
+            names.remove(name)
+            if names:
+                self.owned_names[addr_key] = SEP.join(names)
+            else:
+                del self.owned_names[addr_key]
+
+    def _to_hex_key(self, val) -> str:
+        """Normalize a commitment (str or bytes) to a lowercase hex string (no 0x prefix)."""
+        if isinstance(val, bytes):
+            return val.hex()
+        s = str(val).lower()
+        if s.startswith("0x"):
+            s = s[2:]
+        return s
 
     def _premium(self, name: str) -> u256:
         rec = self.records.get(name, None)
@@ -188,6 +233,20 @@ class NameService(gl.Contract):
         return self.contenthashes.get(name, b"")
 
     @gl.public.view
+    def is_name_owner(self, addr: Address, name: str) -> bool:
+        existing = self.owned_names.get(str(addr), None)
+        if existing is None or existing == "":
+            return False
+        return name in existing.split(SEP)
+
+    @gl.public.view
+    def get_names_by_owner(self, addr: Address) -> list:
+        existing = self.owned_names.get(str(addr), None)
+        if existing is None or existing == "":
+            return []
+        return existing.split(SEP)
+
+    @gl.public.view
     def make_commitment(self, label: str, owner_hex: Address, secret) -> str:
         normalized = label.lower()  # ASCII-only stand-in
         addr_bytes = bytes.fromhex(str(owner_hex).removeprefix("0x"))
@@ -199,12 +258,13 @@ class NameService(gl.Contract):
     # ---- write methods -------------------------------------------------
 
     @gl.public.write
-    def commit(self, commitment: str):
-        existing = self.commitments.get(commitment, None)
+    def commit(self, commitment):
+        key = self._to_hex_key(commitment)
+        existing = self.commitments.get(key, None)
         now = self._now()
         if existing is not None and (now - int(existing.timestamp)) <= MAX_COMMITMENT_AGE:
-            raise gl.vm.UserError("AlreadyCommitted")
-        self.commitments[commitment] = Commitment(
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} AlreadyCommitted")
+        self.commitments[key] = Commitment(
             committer=gl.message.sender_address, timestamp=u64(now)
         )
 
@@ -212,31 +272,31 @@ class NameService(gl.Contract):
     def reveal(self, label: str, secret: bytes) -> str:
         normalized = label.lower()
         if not (MIN_LABEL_LENGTH <= len(normalized.encode("utf-8")) <= MAX_LABEL_LENGTH):
-            raise gl.vm.UserError("InvalidLength")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} InvalidLength")
 
         commitment_key = self.make_commitment(
             normalized, gl.message.sender_address, secret
         )
         c = self.commitments.get(commitment_key, None)
         if c is None:
-            raise gl.vm.UserError("CommitmentNotFound")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} CommitmentNotFound")
         now = self._now()
         age = now - int(c.timestamp)
         if age < MIN_COMMITMENT_AGE:
-            raise gl.vm.UserError("CommitmentTooNew")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} CommitmentTooNew")
         if age > MAX_COMMITMENT_AGE:
-            raise gl.vm.UserError("CommitmentTooOld")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} CommitmentTooOld")
         if c.committer != gl.message.sender_address:
-            raise gl.vm.UserError("Unauthorized")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} Unauthorized")
 
         if not self.is_available(normalized, ""):
-            raise gl.vm.UserError("AlreadyRegistered")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} AlreadyRegistered")
 
         fee = self._get_fee(len(normalized.encode("utf-8")))
         premium = self._premium(normalized)
         required = int(fee) + int(premium)
         if int(gl.message.value) < required:
-            raise gl.vm.UserError("InsufficientFee")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} InsufficientFee")
 
         prior = self.records.get(normalized, None)
         epoch = u64(int(prior.epoch) + 1) if prior is not None else u64(0)
@@ -253,7 +313,13 @@ class NameService(gl.Contract):
         )
 
         del self.commitments[commitment_key]
-        gl.emit("Registered", name=normalized, owner=gl.message.sender_address, expires_at=u64(now + REGISTRATION_PERIOD))
+        self._index_add(gl.message.sender_address, normalized)
+
+        # Refund excess value
+        excess = int(gl.message.value) - required
+        if excess > 0:
+            gl.vm.transfer(gl.message.sender_address, u256(excess))
+
         return normalized
 
     @gl.public.write
@@ -263,9 +329,16 @@ class NameService(gl.Contract):
 
         depth = parent.count(".") + 1
         if depth >= MAX_SUBDOMAIN_DEPTH:
-            raise gl.vm.UserError("TooDeep")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} TooDeep")
 
         normalized = label.lower()
+
+        # Validate label format
+        if not VALID_LABEL_RE.match(normalized):
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} InvalidLabel")
+        if normalized in RESERVED_NAMES:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} ReservedName")
+
         name = self._full_name(normalized, parent)
         parent_rec = self.records[parent]
 
@@ -282,21 +355,26 @@ class NameService(gl.Contract):
             epoch=epoch,
             parent_epoch=parent_rec.epoch,
         )
-        gl.emit("SubdomainRegistered", name=name, parent=parent, owner=gl.message.sender_address)
+        self._index_add(gl.message.sender_address, name)
         return name
 
     @gl.public.write.payable
     def renew(self, name: str):
         rec = self.records.get(name, None)
         if rec is None or rec.parent != "":
-            raise gl.vm.UserError("TokenDoesNotExist")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} TokenDoesNotExist")
         fee = self._get_fee(len(rec.label.encode("utf-8")))
         premium = self._premium(name)
         required = int(fee) + int(premium)
         if int(gl.message.value) < required:
-            raise gl.vm.UserError("InsufficientFee")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} InsufficientFee")
         rec.expires_at = u64(int(rec.expires_at) + REGISTRATION_PERIOD)
         self.records[name] = rec
+
+        # Refund excess value
+        excess = int(gl.message.value) - required
+        if excess > 0:
+            gl.vm.transfer(gl.message.sender_address, u256(excess))
 
     @gl.public.write
     def set_addr(self, name: str, addr: str):
@@ -337,7 +415,12 @@ class NameService(gl.Contract):
         rec = self.records[name]
         rec.owner = Address(to)
         self.records[name] = rec
-        gl.emit("Transfer", name=name, from_=gl.message.sender_address, to=Address(to))
+        self._index_remove(gl.message.sender_address, name)
+        self._index_add(Address(to), name)
+        # Clear stale primary_name for the old owner
+        old_primary = self.primary_name.get(gl.message.sender_address, None)
+        if old_primary == name:
+            del self.primary_name[gl.message.sender_address]
     
     # ---------------------------------------------------------------------------
     # Intelligent extensions
@@ -367,11 +450,17 @@ class NameService(gl.Contract):
                 "printable, non-control Unicode. SUSPICIOUS if it is "
                 "unusual but not clearly malicious. SAFE otherwise."
             )
-            response = gl.nondet.exec_prompt(prompt)
-            verdict = response.strip().upper()
-            if verdict not in ("SAFE", "SUSPICIOUS", "REJECT"):
-                raise gl.vm.UserError("MalformedVerdict")
-            return verdict
+            response = gl.nondet.exec_prompt(prompt, response_format="json")
+            # Defensive parsing: LLM may return dict or string
+            if isinstance(response, dict):
+                verdict = str(response.get("verdict", response.get("result", ""))).strip().upper()
+            else:
+                verdict = str(response).strip().upper()
+            # Extract first valid word from potentially verbose output
+            for word in verdict.split():
+                if word in ("SAFE", "SUSPICIOUS", "REJECT"):
+                    return word
+            raise gl.vm.UserError(f"{ERROR_LLM} MalformedVerdict: {verdict[:50]}")
 
         verdict = gl.eq_principle.prompt_comparative(
             judge,
@@ -407,18 +496,14 @@ class NameService(gl.Contract):
     def resolve_dispute(self, dispute_id: u32):
         dispute = self.disputes[int(dispute_id)]
         if dispute.resolved:
-            raise gl.vm.UserError("AlreadyResolved")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} AlreadyResolved")
 
         name = dispute.name
         reason = dispute.reason
         evidence_url = dispute.evidence_url
 
         def adjudicate():
-            page = gl.nondet.web.request(
-                evidence_url,
-                method='GET',
-                body={}
-                )
+            page = gl.nondet.web.get(evidence_url)
             prompt = (
                 "You are adjudicating a domain-name dispute, similar to a "
                 "UDRP panel.\n"
@@ -429,24 +514,25 @@ class NameService(gl.Contract):
                 "registration / impersonation. Respond as JSON on one line: "
                 '{"uphold": true|false, "ruling": "<one sentence reason>"}'
             )
-            return gl.nondet.exec_prompt(prompt)
+            return gl.nondet.exec_prompt(prompt, response_format="json")
 
         def validate(leaders_res):
             if not isinstance(leaders_res, gl.vm.Return):
                 return False
-            my_result = adjudicate()
-            # Compare the boolean outcome, not the exact prose — the ruling
-            # text can vary between validators even when they agree on the
-            # verdict.
             try:
-                a = json.loads(leaders_res.calldata)
-                b = json.loads(my_result)
-                return bool(a.get("uphold")) == bool(b.get("uphold"))
+                my_result = adjudicate()
             except Exception:
+                return False  # validator failed - disagree to force rotation
+            # Compare the boolean outcome, not the exact prose
+            try:
+                a = json.loads(leaders_res.calldata) if isinstance(leaders_res.calldata, str) else leaders_res.calldata
+                b = json.loads(my_result) if isinstance(my_result, str) else my_result
+                return bool(a.get("uphold")) == bool(b.get("uphold"))
+            except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
                 return False
 
         raw = gl.vm.run_nondet_unsafe(adjudicate, validate)
-        parsed = json.loads(raw)
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
         upheld = bool(parsed.get("uphold", False))
         ruling = str(parsed.get("ruling", ""))
 
@@ -454,15 +540,16 @@ class NameService(gl.Contract):
         dispute.upheld = upheld
         dispute.ruling = ruling
         self.disputes[int(dispute_id)] = dispute
-        gl.emit("DisputeResolved", dispute_id=dispute_id, name=name, upheld=upheld)
 
         if upheld:
             rec = self.records.get(name, None)
             if rec is not None:
+                old_owner = rec.owner
                 zero = Address("0x0000000000000000000000000000000000000000")
                 rec.owner = zero          # freeze: no owner can act on it
                 rec.resolved_address = zero
                 self.records[name] = rec
+                self._index_remove(old_owner, name)
 
     @gl.public.view
     def get_dispute(self, dispute_id: u32) -> Dispute:
@@ -473,21 +560,20 @@ class NameService(gl.Contract):
     @gl.public.write
     def set_default_fee(self, fee: u256):
         if gl.message.sender_address != self.owner:
-            raise gl.vm.UserError("Unauthorized")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} Unauthorized")
         self.default_fee = fee
 
     @gl.public.write
     def set_length_fee(self, length: u32, fee: u256):
         if gl.message.sender_address != self.owner:
-            raise gl.vm.UserError("Unauthorized")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} Unauthorized")
         self.length_fees[length] = fee
 
     @gl.public.write.payable
     def withdraw(self, receiver: str) -> None:
         if gl.message.sender_address != self.owner:
-            raise gl.vm.UserError("Unauthorized")
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} Unauthorized")
         amount = self.balance
         if amount == u256(0):
-            raise gl.vm.UserError("Balance is Zero")
-        # Transfer the full amount to the receiver
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} Balance is Zero")
         gl.vm.transfer(Address(receiver), amount)

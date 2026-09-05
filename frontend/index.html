@@ -63,23 +63,6 @@
     font-weight: 600;
   }
 
-  /* Network selector */
-  .network-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 16px;
-  }
-  .network-row label { font-size: 13px; color: var(--muted); }
-  .network-row select {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 4px 8px;
-    border-radius: var(--radius);
-    font-size: 13px;
-  }
-
   /* Buttons */
   .btn {
     padding: 8px 16px;
@@ -250,21 +233,10 @@
   <div class="header">
     <h1><span>GNS</span> Name Service</h1>
     <div class="wallet-info">
-      <span class="network-badge" id="networkBadge">localnet</span>
+      <span class="network-badge" id="networkBadge">studionet</span>
       <span class="address" id="walletAddress">Not connected</span>
       <button class="btn btn-primary btn-sm" id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
     </div>
-  </div>
-
-  <!-- Network selector -->
-  <div class="network-row">
-    <label>Network:</label>
-    <select id="networkSelect" onchange="switchNetwork(this.value)">
-      <option value="localnet">Localnet</option>
-      <option value="studionet">StudioNet (gasless)</option>
-      <option value="testnetBradbury">Testnet Bradbury</option>
-      <option value="testnetAsimov">Testnet Asimov</option>
-    </select>
   </div>
 
   <!-- Status -->
@@ -533,8 +505,8 @@
 // ==========================================================================
 // GenLayerJS SDK import
 // ==========================================================================
-import { createClient, createAccount } from 'https://esm.sh/genlayer-js@latest';
-import * as chains from 'https://esm.sh/genlayer-js@latest/chains';
+import { createClient } from 'https://esm.sh/genlayer-js@latest';
+import { studionet } from 'https://esm.sh/genlayer-js@latest/chains';
 import { TransactionStatus } from 'https://esm.sh/genlayer-js@latest/types';
 
 // ==========================================================================
@@ -542,18 +514,8 @@ import { TransactionStatus } from 'https://esm.sh/genlayer-js@latest/types';
 // ==========================================================================
 let client = null;
 let readClient = null;
-let account = null;
-let currentChain = chains.localnet;
 let currentAddress = '';
 let commitState = { secret: null, key: null, timer: null, ready: false };
-
-// Chain map
-const chainMap = {
-  localnet: chains.localnet,
-  studionet: chains.studionet,
-  testnetBradbury: chains.testnetBradbury,
-  testnetAsimov: chains.testnetAsimov,
-};
 
 // ==========================================================================
 // Logging
@@ -591,37 +553,26 @@ window.connectWallet = async function() {
       currentAddress.slice(0, 6) + '…' + currentAddress.slice(-4);
 
     // Build clients
-    readClient = createClient({ chain: currentChain });
+    readClient = createClient({ chain: studionet });
 
-    account = createAccount();
     client = createClient({
-      chain: currentChain,
-      account: account,
+      chain: studionet,
+      account: currentAddress,
       provider: window.ethereum,
     });
+
+    // Switch MetaMask to studionet before any writes
+    try {
+      await client.connect('studionet');
+      log('Wallet switched to studionet', 'success');
+    } catch (e) {
+      log(`Chain switch: ${e.message}`, 'warn');
+    }
 
     setStatus(true);
     log(`Connected: ${currentAddress}`, 'success');
   } catch (err) {
     log(`Connection failed: ${err.message}`, 'error');
-  }
-};
-
-// ==========================================================================
-// Network switching
-// ==========================================================================
-window.switchNetwork = async function(network) {
-  currentChain = chainMap[network] || chains.localnet;
-  document.getElementById('networkBadge').textContent = network;
-
-  if (client) {
-    readClient = createClient({ chain: currentChain });
-    client = createClient({
-      chain: currentChain,
-      account: account,
-      provider: window.ethereum,
-    });
-    log(`Switched to ${network}`, 'success');
   }
 };
 
@@ -708,6 +659,8 @@ window.doCommit = async function() {
     commitState.secret = secret;
     commitState.key = commitment;
 
+    log(`Frontend commitment: ${commitment}`);
+    log(`  label=${normalized}, sender=${currentAddress}`);
     log(`Committing: ${commitment.slice(0, 18)}…`);
     const hash = await client.writeContract({
       address: addr,
