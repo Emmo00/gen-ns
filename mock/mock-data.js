@@ -10,7 +10,7 @@ import { studionet } from "https://esm.sh/genlayer-js@latest/chains";
 // ============================================================
 // Configuration — edit these values for your deployment
 // ============================================================
-export const DEFAULT_CONTRACT_ADDRESS = "0x4110263A190Db53B7630fEaE3f983e7df118715B";
+export const DEFAULT_CONTRACT_ADDRESS = "0x6F4744CEa4dCc0F4f196D214A7fA58eB0fde2173";
 export const DEFAULT_NETWORK = "studionet";
 
 // ---------- Constants ----------

@@ -303,7 +303,8 @@ function viewRegister(rawName, query) {
   const panel = document.getElementById('registerPanel');
   if (!isValidLabel(normalizedName)) { panel.innerHTML = '<div class="empty-state"><p>This name is not valid.</p></div>'; document.getElementById('stepper').innerHTML = ''; return; }
 
-  let step = 0, years = parseInt(query && query.years, 10) || 1, commitSecret = null, commitHash = null, commitTimestamp = null;
+  const preselectedYears = parseInt(query && query.years, 10) || 0;
+  let step = preselectedYears > 0 ? 1 : 0, years = preselectedYears || 1, commitSecret = null, commitHash = null, commitTimestamp = null;
 
   function drawStepper() {
     document.getElementById('stepper').innerHTML = STEP_LABELS.map((label, i) =>
@@ -324,6 +325,12 @@ function viewRegister(rawName, query) {
     } catch (e) { panel.innerHTML = '<div class="empty-state"><p>Error: ' + e.message + '</p></div>'; }
   }
 
+  // Delegated listeners — survive innerHTML replacements
+  panel.addEventListener('click', (e) => {
+    if (e.target.closest('#toReveal')) { step = 4; drawPanel(); }
+    if (e.target.closest('#toDashboard')) navigate('#/names');
+  });
+
   function bindPanel() {
     if (step === 0) {
       panel.querySelectorAll('[data-years]').forEach(btn => btn.addEventListener('click', () => { years = parseInt(btn.dataset.years, 10); drawPanel(); }));
@@ -334,9 +341,8 @@ function viewRegister(rawName, query) {
       panel.querySelector('#backStep').addEventListener('click', () => { step = 0; drawPanel(); });
       panel.querySelector('#doCommit').addEventListener('click', () => runCommit());
     }
-    if (step === 3) { panel.querySelector('#toReveal').addEventListener('click', () => { step = 4; drawPanel(); }); startWaitTimer(); }
+    if (step === 3) { startWaitTimer(); }
     if (step === 4) { panel.querySelector('#backToWait').addEventListener('click', () => { step = 3; drawPanel(); }); panel.querySelector('#doReveal').addEventListener('click', () => runReveal()); }
-    if (step === 5) { panel.querySelector('#toDashboard').addEventListener('click', () => navigate('#/names')); }
   }
 
   async function runCommit() {
@@ -358,7 +364,7 @@ function viewRegister(rawName, query) {
       const elapsed = Math.floor((Date.now() - commitTimestamp) / 1000);
       const remaining = Math.max(0, MIN_COMMITMENT_AGE - elapsed);
       const pct = Math.min(100, (elapsed / MIN_COMMITMENT_AGE) * 100);
-      if (remaining <= 0) { timerEl.innerHTML = '<div class="done-mark" style="width:40px;height:40px;font-size:18px;margin-bottom:12px">&#10003;</div><p>Commitment mature - ready to reveal</p>'; return; }
+      if (remaining <= 0) { timerEl.innerHTML = '<div class="done-mark" style="width:40px;height:40px;font-size:18px;margin-bottom:12px">&#10003;</div><p>Commitment mature - ready to reveal</p>'; const btn = document.getElementById('toReveal'); if (btn) btn.disabled = false; return; }
       const min = Math.floor(remaining / 60), sec = remaining % 60;
       timerEl.innerHTML = '<div class="tx-spinner" style="margin-bottom:16px"></div><p>Waiting ' + min + ':' + String(sec).padStart(2, '0') + '...</p><div style="width:100%;height:6px;background:var(--border);border-radius:3px;margin-top:12px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:var(--ember);border-radius:3px;transition:width 1s linear"></div></div>';
       requestAnimationFrame(() => setTimeout(update, 1000));
@@ -413,7 +419,10 @@ function txErrorHTML(message) {
 }
 
 function stepDoneHTML(name, years) {
-  return '<div class="panel-card panel-card--center"><div class="done-mark">&#10003;</div><h2>' + name + TLD + ' is yours</h2><p class="panel-sub">Registered for ' + (years * 365) + ' days. You can manage it from your dashboard.</p><button class="btn btn-primary btn-lg btn-block" id="toDashboard">Go to my names</button></div>';
+  const fullName = name + TLD;
+  const shareText = encodeURIComponent('I just registered ' + fullName + ' on GenNS! 🎉\n\n' + window.location.origin);
+  const shareUrl = 'https://x.com/intent/post?text=' + shareText;
+  return '<div class="panel-card panel-card--center"><div class="done-mark">&#10003;</div><h2>' + fullName + ' is yours</h2><p class="panel-sub">Registered for ' + (years * 365) + ' days. You can manage it from your dashboard.</p><button class="btn btn-primary btn-lg btn-block" id="toDashboard">Go to my names</button><a class="btn btn-ghost btn-lg btn-block share-x" href="' + shareUrl + '" target="_blank" rel="noopener noreferrer"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="vertical-align: middle; margin-right: 6px;"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>Share on X</a></div>';
 }
 
 // --- MY NAMES / DASHBOARD ---

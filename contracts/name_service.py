@@ -144,7 +144,7 @@ class NameService(gl.Contract):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} Unauthorized")
 
     def _index_add(self, addr: Address, name: str):
-        addr_key = str(addr)
+        addr_key = str(addr).lower()
         existing = self.owned_names.get(addr_key, None)
         names = existing.split(SEP) if existing is not None and existing != "" else []
         if name not in names:
@@ -152,7 +152,7 @@ class NameService(gl.Contract):
             self.owned_names[addr_key] = SEP.join(names)
 
     def _index_remove(self, addr: Address, name: str):
-        addr_key = str(addr)
+        addr_key = str(addr).lower()
         existing = self.owned_names.get(addr_key, None)
         if existing is None or existing == "":
             return
@@ -251,14 +251,14 @@ class NameService(gl.Contract):
 
     @gl.public.view
     def is_name_owner(self, addr: Address, name: str) -> bool:
-        existing = self.owned_names.get(str(addr), None)
+        existing = self.owned_names.get(str(addr).lower(), None)
         if existing is None or existing == "":
             return False
         return name in existing.split(SEP)
 
     @gl.public.view
     def get_names_by_owner(self, addr: Address) -> list:
-        existing = self.owned_names.get(str(addr), None)
+        existing = self.owned_names.get(str(addr).lower(), None)
         if existing is None or existing == "":
             return []
         return existing.split(SEP)
