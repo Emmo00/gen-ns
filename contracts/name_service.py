@@ -91,9 +91,14 @@ class NameService(gl.Contract):
 
     def __init__(self):
         self.owner = gl.message.sender_address
-        self.default_fee = u256(5 * 10**14)      # 0.0005 GEN, mirrors GNS's 5+ byte tier
+        self.default_fee = u256(5 * 10**17)          # 0.5 GEN
         self.max_premium = u256(100 * 10**18)     # 100 GEN
         self.premium_decay_period = u64(DEFAULT_PREMIUM_DECAY_PERIOD)
+        # Length-based fees (GEN per year)
+        self.length_fees[u32(1)] = u256(5 * 10**18)   # 1 char  = 5 GEN
+        self.length_fees[u32(2)] = u256(3 * 10**18)   # 2 chars = 3 GEN
+        self.length_fees[u32(3)] = u256(2 * 10**18)   # 3 chars = 2 GEN
+        self.length_fees[u32(4)] = u256(1 * 10**18)   # 4 chars = 1 GEN
 
     # ---- internal helpers -------------------------------------------------
 
@@ -182,6 +187,14 @@ class NameService(gl.Contract):
             return u256(0)
         return u256(int(self.max_premium) * (decay - elapsed) // decay)
 
+    def make_commitment(self, label: str, owner_hex: Address, secret) -> str:
+        normalized = label.lower()  # ASCII-only stand-in
+        addr_bytes = bytes.fromhex(str(owner_hex).removeprefix("0x"))
+        if isinstance(secret, str):
+            secret = bytes.fromhex(secret.removeprefix("0x"))
+        payload = normalized.encode("utf-8") + addr_bytes + secret
+        return hashlib.sha256(payload).digest().hex()
+
     # ---- read methods -------------------------------------------------
 
     @gl.public.view
@@ -191,6 +204,10 @@ class NameService(gl.Contract):
         if rec is None:
             return True
         return not self._is_active(name)
+
+    @gl.public.view
+    def get_default_fee(self) -> u256:
+        return self.default_fee
 
     @gl.public.view
     def get_fee(self, length: u32) -> u256:
@@ -246,14 +263,6 @@ class NameService(gl.Contract):
             return []
         return existing.split(SEP)
 
-    @gl.public.view
-    def make_commitment(self, label: str, owner_hex: Address, secret) -> str:
-        normalized = label.lower()  # ASCII-only stand-in
-        addr_bytes = bytes.fromhex(str(owner_hex).removeprefix("0x"))
-        if isinstance(secret, str):
-            secret = bytes.fromhex(secret.removeprefix("0x"))
-        payload = normalized.encode("utf-8") + addr_bytes + secret
-        return hashlib.sha256(payload).digest().hex()
 
     # ---- write methods -------------------------------------------------
 
@@ -269,10 +278,12 @@ class NameService(gl.Contract):
         )
 
     @gl.public.write.payable
-    def reveal(self, label: str, secret: bytes) -> str:
+    def reveal(self, label: str, secret: bytes, years: u32) -> str:
         normalized = label.lower()
         if not (MIN_LABEL_LENGTH <= len(normalized.encode("utf-8")) <= MAX_LABEL_LENGTH):
             raise gl.vm.UserError(f"{ERROR_EXPECTED} InvalidLength")
+        if int(years) < 1 or int(years) > 5:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} InvalidYears")
 
         commitment_key = self.make_commitment(
             normalized, gl.message.sender_address, secret
@@ -294,7 +305,7 @@ class NameService(gl.Contract):
 
         fee = self._get_fee(len(normalized.encode("utf-8")))
         premium = self._premium(normalized)
-        required = int(fee) + int(premium)
+        required = int(fee) * int(years) + int(premium)
         if int(gl.message.value) < required:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} InsufficientFee")
 
@@ -307,7 +318,7 @@ class NameService(gl.Contract):
             parent="",
             owner=gl.message.sender_address,
             resolved_address=zero,
-            expires_at=u64(now + REGISTRATION_PERIOD),
+            expires_at=u64(now + REGISTRATION_PERIOD * int(years)),
             epoch=epoch,
             parent_epoch=u64(0),
         )
@@ -359,16 +370,18 @@ class NameService(gl.Contract):
         return name
 
     @gl.public.write.payable
-    def renew(self, name: str):
+    def renew(self, name: str, years: u32):
+        if int(years) < 1 or int(years) > 5:
+            raise gl.vm.UserError(f"{ERROR_EXPECTED} InvalidYears")
         rec = self.records.get(name, None)
         if rec is None or rec.parent != "":
             raise gl.vm.UserError(f"{ERROR_EXPECTED} TokenDoesNotExist")
         fee = self._get_fee(len(rec.label.encode("utf-8")))
         premium = self._premium(name)
-        required = int(fee) + int(premium)
+        required = int(fee) * int(years) + int(premium)
         if int(gl.message.value) < required:
             raise gl.vm.UserError(f"{ERROR_EXPECTED} InsufficientFee")
-        rec.expires_at = u64(int(rec.expires_at) + REGISTRATION_PERIOD)
+        rec.expires_at = u64(int(rec.expires_at) + REGISTRATION_PERIOD * int(years))
         self.records[name] = rec
 
         # Refund excess value
